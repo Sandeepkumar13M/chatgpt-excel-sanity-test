@@ -10,8 +10,8 @@ requires-python = ">=3.13"
 dependencies = [
     "pytest (>=8.4.0,<9.0.0)",
     "patchright (>=1.52.5,<2.0.0)",
-    "python-dotenv (>=1.1.0,<2.0.0)",
-    "path (>=17.1.0,<18.0.0)"
+    "path (>=17.1.0,<18.0.0)",
+    "python-dotenv (>=1.1.0,<2.0.0)"
 ]
 
 [tool.poetry]
@@ -21,3 +21,8 @@ packages = [{include = "chatgpt_excle_testing", from = "src"}]
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+markers = [
+    "sanity: mark a test as a sanity test."
+]

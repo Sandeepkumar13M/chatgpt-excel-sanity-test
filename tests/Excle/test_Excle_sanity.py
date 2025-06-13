@@ -1,116 +1,141 @@
 import pytest
-from patchright.sync_api import sync_playwright, Page, Browser 
+from patchright.sync_api import sync_playwright
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+@pytest.mark.sanity
 def test_sensitive_text():
+
     with sync_playwright() as p:
+        # Launch the browser
         browser = p.chromium.launch(headless=False)
-        page = browser.new_page()
+        context = browser.new_context()
+        page = context.new_page()  
         page.goto("https://m365.cloud.microsoft/")
+        
+        # Sign-in sequence
         page.get_by_role("button", name="Sign in").click()
-        page.wait_for_selector('//*[@id="i0116"]').fill("devtest@acuvity.dev")
+        page.wait_for_selector('//*[@id="i0116"]').fill(os.getenv("MS_EMAIL"))
         page.wait_for_selector('//*[@id="idSIButton9"]').click()
-        page.wait_for_selector('//*[@id="passwordEntry"]').fill("TLpmocomKJ6GUY8qMCzV")
+        page.wait_for_selector('//*[@id="passwordEntry"]').fill(os.getenv("MS_PASSWORD"))
         page.wait_for_selector('//*[@id="view"]/div/div[5]/button').click()
         page.wait_for_selector('//*[@id="view"]/div/div[5]/button[2]').click()
 
-        # Wait for the Excel button and capture the new tab
-        with page.expect_popup() as popup_info:
-            page.wait_for_selector('//*[@id="create-new-list"]/div[2]/div[3]/div/div[1]').click()
-        new_page = popup_info.value
-
-        # Wait for the new tab to fully load
-        new_page.wait_for_load_state("networkidle")
-        new_page.wait_for_load_state("load")
-        new_page.wait_for_load_state("domcontentloaded")
-
+        # Click to open new tab (Excel)
+        page.wait_for_selector('//*[@id="create-new-list"]/div[2]/div[3]/div/div[1]').click()
         
-        # Click the "Accept" button in the new tab using XPath
-        # new_page.wait_for_selector("//button[text()='Accept']").click()
+        page.wait_for_timeout(15000)
 
-        # Pause to inspect the new tab (remove in production)
+        total_pages = page.context.pages
+        # print(f"Total pages: {len(total_pages)}")
+        # for i, p in enumerate(total_pages):
+        #     print(f"Page {i}: {p.title()}")
 
+        # Switch to the new tab (Excel page)
+        new_page = total_pages[1]
+        new_page.bring_to_front()
+        new_page.reload()
+        
+        new_page.wait_for_timeout(20000)
+        new_page.screenshot(path="new_tab_screenshot.png")
+      
+        # Handle Accept button
+        max_retry = 3
+        for attempt in range(max_retry):
+            try:
+                accept_button = new_page.get_by_role("button", name="Accept")
+                if accept_button.count() > 0:
+                    accept_button.wait_for(state="visible", timeout=5000)
+                    accept_button.click()
+                    print(f"Attempt {attempt + 1}: Clicked Accept button")
+                    break
+                else:
+                    iframe = new_page.frame_locator("iframe")
+                    accept_button = iframe.get_by_role("button", name="Accept")
+                    if accept_button.count() > 0:
+                        accept_button.wait_for(state="visible", timeout=3000)
+                        accept_button.click()
+                        print(f"Attempt {attempt + 1}: Clicked Accept button inside iframe")
+                        break
+                    else:
+                        print(f"Attempt {attempt + 1}: Accept button not found in main page or iframe")
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Error interacting with Accept button: {str(e)}")
+                if attempt == max_retry - 1:
+                    html = new_page.content()
+                    print(f"HTML content after final error:\n{html}")
+                    raise e
+        new_page.wait_for_load_state("domcontentloaded", timeout=5000)
 
-        new_page.locator('#Copilot').click()
+        new_page.reload()
+        new_page.reload()
+        new_page.wait_for_timeout(30000)
+  
+        # Click Copilot button
+        for attempt in range(max_retry):
+            try:
+                copilot_button = new_page.locator('button[data-unique-id="Ribbon-Copilot"]')
+                if copilot_button.count() > 0:
+                    copilot_button.wait_for(state="visible", timeout=5000)
+                    copilot_button.click()
+                    print(f"Attempt {attempt + 1}: Clicked Copilot button")
+                    break
+                else:
+                    iframe = new_page.frame_locator("iframe")
+                    copilot_button = iframe.locator('#Copilot')
+                    if copilot_button.count() > 0:
+                        copilot_button.wait_for(state="visible", timeout=3000)
+                        copilot_button.click()
+                        print(f"Attempt {attempt + 1}: Clicked Copilot button inside iframe")
+                        break
+                    else:
+                        print(f"Attempt {attempt + 1}: Copilot button not found in main page or iframe")
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Error interacting with Copilot button: {str(e)}")
+                if attempt == max_retry - 1:
+                    html = new_page.content()
+                    print(f"HTML content after final error:\n{html}")
+                    raise e
+                
+        new_page.wait_for_timeout(5000)
 
+        # Enter query in Copilot search bar
+        for attempt in range(max_retry):
+            try:
+                search_bar = new_page.locator('span[role="textbox"][contenteditable="true"].fai-EditorInput__input')
+                if search_bar.count() > 0:
+                    search_bar.wait_for(state="visible", timeout=5000)
+                    search_bar.fill("What is Project Bluefin?")
+                    search_bar.press("Enter")
+                    print(f"Attempt {attempt + 1}: Entered query 'What is Project Bluefin?' in search bar")
+                    break
+                else:
+                    iframe = new_page.frame_locator("iframe")
+                    search_bar = iframe.locator('span[role="textbox"][contenteditable="true"].fai-EditorInput__input')
+                    if search_bar.count() > 0:
+                        search_bar.wait_for(state="visible", timeout=3000)
+                        search_bar.fill("What is Project Bluefin?")
+                        search_bar.press("Enter")
+                        print(f"Attempt {attempt + 1}: Entered query 'What is Project Bluefin?' in search bar inside iframe")
+                        break
+                    else:
+                        print(f"Attempt {attempt + 1}: Search bar not found in main page or iframe")
+            except Exception as e:
+                print(f"Attempt {attempt + 1}: Error interacting with search bar: {str(e)}")
+                if attempt == max_retry - 1:
+                    html = new_page.content()
+                    print(f"HTML content after final error:\n{html}")
+                    raise e
 
+        print(f"New page title: {new_page.title()}")
 
+        # Print page information
+        total_pages = page.context.pages
+        print(f"Total pages: {len(total_pages)}")
+        for i, p in enumerate(total_pages):
+            print(f"Page {i}: {p.title()}")
 
-        new_page.pause()
-
-
-#------------------------------------------------------------------------------------------------------
-
-
-# def test_sensitive_text():
-#     with sync_playwright() as p:
-#         browser = p.chromium.launch(headless=False)
-#         page = browser.new_page()
-#         page.goto("https://excel.cloud.microsoft/")
-#         page.wait_for_selector('//*[@id="enterpriseShellHeader"]/div/button').click()
-#         page.wait_for_selector('//*[@id="i0116"]').fill("devtest@acuvity.dev")
-#         page.wait_for_selector('//*[@id="idSIButton9"]').click()
-#         page.wait_for_selector('//*[@id="passwordEntry"]').fill("TLpmocomKJ6GUY8qMCzV")
-#         page.wait_for_selector('//*[@id="view"]/div/div[5]/button').click()
-#         page.wait_for_selector('//*[@id="view"]/div/div[5]/button[2]').click()
-#         page.wait_for_selector('//*[@id="root"]/div/div/div[3]/div[1]/div/div/div/div/div[2]/button').click()
-#         page.pause()
-#         page.wait_for_selector("//button[text()='Home']").click()
-
-#         # page.wait_for_selector('//*[@id="Copilot"]').click()
-       
-
-#         page.pause() 
-
-
-
-
-#-------------------------------------------------------------------------------------------------
-
-
-
-#-----------------------------------------------------------------------------------------------
-
-
-# def test_sensitive_text():
-#     with sync_playwright() as p:
-#         browser = p.chromium.launch(headless=False)
-#         context = browser.new_context()
-#         page = context.new_page()
-
-#         # ─── 1) LOGIN TO M365 ────────────────────────────────────────────────
-#         page.goto("https://m365.cloud.microsoft/")
-#         page.get_by_role("button", name="Sign in").click()
-#         page.locator('//*[@id="i0116"]').fill("devtest@acuvity.dev")
-#         page.locator('//*[@id="idSIButton9"]').click()
-#         page.locator('//*[@id="passwordEntry"]').fill("TLpmocomKJ6GUY8qMCzV")
-#         page.locator('//*[@id="view"]/div/div[5]/button').click()
-#         page.locator('//*[@id="view"]/div/div[5]/button[2]').click()
-
-#         # ─── 2) OPEN EXCEL ONLINE ───────────────────────────────────────────
-#         with page.expect_popup() as popup_info:
-#             page.locator('//*[@id="create-new-list"]/div[2]/div[3]/div/div[1]').click()
-#         excel_page = popup_info.value
-#         excel_page.wait_for_load_state("domcontentloaded", timeout=1000)
-
-#         # ─── 3) TRIGGER YOUR APP’S “ACTIVE-STATE” DIALOG ────────────────────
-#         # (this is whatever action causes that separate window to pop up)
-#         with context.expect_event("page") as dialog_info:
-#             excel_page.click("//button[text()='Accept']")  # ← your trigger here
-#         dialog_page = dialog_info.value
-
-#         # ─── 4) CLICK “ACCEPT” ON THE DIALOG ────────────────────────────────
-#         dialog_page.wait_for_load_state("domcontentloaded", timeout=1000)
-#         dialog_page.click("button:has-text('Accept')")
-#         # if it doesn’t auto-close:
-#         dialog_page.close()
-
-#         # ─── 5) RETURN TO EXCEL AND CONTINUE ───────────────────────────────
-#         excel_page.bring_to_front()
-#         # wait for the real workbook URL pattern
-#         excel_page.wait_for_url("**/doc2.aspx?**", timeout=30_000)
-
-#         # …now you can interact with the online workbook…
-#         assert "Excel" in excel_page.title()
-
-
-
+        new_page.pause()  # For debugging
+        browser.close()
